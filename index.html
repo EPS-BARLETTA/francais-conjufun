@@ -1,149 +1,141 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calcul de VMA</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            padding: 20px;
-            max-width: 600px;
-            margin: auto;
-        }
-        input, button {
-            font-size: 18px;
-            margin: 10px 0;
-            padding: 10px;
-            width: 100%;
-            max-width: 500px;
-        }
-        button {
-            cursor: pointer;
-            color: white;
-            border: none;
-            border-radius: 5px;
-        }
-        .btn-start { background-color: #4CAF50; }
-        .btn-plot { background-color: #2196F3; }
-        .btn-download { background-color: #FF9800; }
-        .results { margin-top: 20px; }
-        #vmaOutput { color: green; font-weight: bold; }
-        label { display: block; margin-top: 10px; }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mes vœux</title>
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: radial-gradient(circle at top, #1f6f43, #06130b 60%, #000);
+      color: #fff;
+      user-select: none;
+    }
+
+    /* PAGE DE GARDE */
+    .cover {
+      height: 100%;
+      display: grid;
+      place-items: center;
+      text-align: center;
+    }
+
+    .box {
+      padding: 40px 32px;
+      border-radius: 24px;
+      background: rgba(0,0,0,.45);
+      border: 1px solid rgba(255,255,255,.15);
+      box-shadow: 0 20px 60px rgba(0,0,0,.5);
+      backdrop-filter: blur(8px);
+    }
+
+    h1 {
+      margin: 0 0 20px;
+      font-size: clamp(26px, 5vw, 40px);
+    }
+
+    button {
+      cursor: pointer;
+      border: none;
+      border-radius: 18px;
+      padding: 16px 22px;
+      font-size: 18px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #ff4444, #ffcc00);
+      color: #1a0c00;
+      box-shadow: 0 14px 35px rgba(255, 120, 0, .35);
+    }
+
+    button:active {
+      transform: scale(0.97);
+    }
+
+    /* SURPRISE */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      display: grid;
+      place-items: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .2s ease;
+    }
+
+    .overlay.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .finger {
+      font-size: min(65vh, 65vw);
+      line-height: 1;
+      animation: pop .2s ease-out, shake 1.2s ease-in-out infinite .2s;
+    }
+
+    @keyframes pop {
+      from { transform: scale(.8); }
+      to   { transform: scale(1); }
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: rotate(-2deg); }
+      50% { transform: rotate(2deg); }
+    }
+
+    .hint {
+      position: fixed;
+      bottom: 16px;
+      font-size: 13px;
+      opacity: .7;
+    }
+  </style>
 </head>
 <body>
 
-    <h1>Calcul de la VMA</h1>
-
-    <!-- Information sur le coureur et l'observateur -->
-    <input type="text" id="runnerName" placeholder="Nom du coureur" required>
-    <input type="text" id="runnerClass" placeholder="Classe du coureur" required>
-    <input type="text" id="observerName" placeholder="Nom de l'observateur" required>
-
-    <!-- VMA du coureur et pourcentage cible -->
-    <label for="runnerVMA">VMA du coureur (km/h) :</label>
-    <input type="number" id="runnerVMA" placeholder="VMA du coureur" required>
-    
-    <label for="targetPercentage">Pourcentage de la VMA cible (%) :</label>
-    <input type="number" id="targetPercentage" placeholder="Ex: 90" required>
-
-    <!-- Durée de la course -->
-    <label for="duration">Durée de la course (en minutes, multiples de 1:30) :</label>
-    <input type="number" id="duration" min="1.5" step="1.5" value="3">
-
-    <!-- Bouton pour démarrer la course -->
-    <button class="btn-start" onclick="startRace()">Démarrer la course</button>
-
-    <div id="controlSection" style="display:none;">
-        <!-- Boutons de contrôle pour passer les plots et télécharger les résultats -->
-        <button class="btn-plot" onclick="addPlot()">Passer un plot</button>
-        <button class="btn-download" onclick="downloadResults()">Télécharger les résultats</button>
-        
-        <!-- Affichage des informations dynamiques -->
-        <p>Temps écoulé : <span id="timeElapsed">0:00</span></p>
-        <p>Plots passés : <span id="plotCount">0</span></p>
-        <p id="vmaOutput"></p>
-        <p id="targetVMAOutput"></p>
+  <!-- PAGE DE GARDE -->
+  <section class="cover">
+    <div class="box">
+      <h1>🎄 Cliquez pour avoir<br>mes vœux</h1>
+      <button id="open">Voir mes vœux 🎁</button>
     </div>
+  </section>
 
-    <script>
-        let duration, interval, timeElapsed = 0, plotCount = 0, results = [];
+  <!-- SURPRISE -->
+  <div id="overlay" class="overlay">
+    <div class="finger">🖕</div>
+    <div class="hint">Clique ou appuie sur Échap pour fermer</div>
+  </div>
 
-        function startRace() {
-            const runnerName = document.getElementById("runnerName").value;
-            const runnerClass = document.getElementById("runnerClass").value;
-            const observerName = document.getElementById("observerName").value;
-            const runnerVMA = parseFloat(document.getElementById("runnerVMA").value);
-            const targetPercentage = parseFloat(document.getElementById("targetPercentage").value);
+  <script>
+    const btn = document.getElementById('open');
+    const overlay = document.getElementById('overlay');
 
-            if (!runnerName || !runnerClass || !observerName || isNaN(runnerVMA) || isNaN(targetPercentage)) {
-                alert("Veuillez remplir toutes les informations avant de démarrer la course.");
-                return;
-            }
-
-            duration = parseFloat(document.getElementById("duration").value) * 60;
-            plotCount = 0;
-            results = [`Coureur : ${runnerName}, Classe : ${runnerClass}, Observateur : ${observerName}`];
-            timeElapsed = 0;
-
-            const targetVMA = (runnerVMA * (targetPercentage / 100)).toFixed(2);
-            const plotsPerInterval = (targetVMA * 1.5 / 3.6).toFixed(2);
-
-            document.getElementById("controlSection").style.display = "block";
-            document.getElementById("plotCount").textContent = plotCount;
-            document.getElementById("timeElapsed").textContent = formatTime(0);
-            document.getElementById("vmaOutput").textContent = "";
-            document.getElementById("targetVMAOutput").textContent = `À ${targetPercentage}% de la VMA : ${targetVMA} km/h, soit ${plotsPerInterval} plots par 1:30 min.`;
-
-            interval = setInterval(updateTime, 1000);
+    async function openGift() {
+      try {
+        if (!document.fullscreenElement) {
+          await document.documentElement.requestFullscreen();
         }
+      } catch(e) {}
+      overlay.classList.add('show');
+    }
 
-        function updateTime() {
-            timeElapsed++;
-            document.getElementById("timeElapsed").textContent = formatTime(timeElapsed);
+    function closeGift() {
+      overlay.classList.remove('show');
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      }
+    }
 
-            if (timeElapsed % 90 === 0) {
-                calculateVMA();
-            }
-
-            if (timeElapsed >= duration) {
-                clearInterval(interval);
-                calculateVMA(); 
-                alert("Course terminée !");
-            }
-        }
-
-        function addPlot() {
-            plotCount++;
-            document.getElementById("plotCount").textContent = plotCount;
-        }
-
-        function calculateVMA() {
-            const vma = plotCount / 2;
-            const message = `VMA après ${formatTime(timeElapsed)} : ${vma.toFixed(2)} km/h`;
-            document.getElementById("vmaOutput").textContent = message;
-            results.push(message);
-            alert(message);
-        }
-
-        function downloadResults() {
-            const blob = new Blob([results.join("\n")], { type: 'text/plain' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = "resultats_vma.txt";
-            a.click();
-            URL.revokeObjectURL(url);
-        }
-
-        function formatTime(seconds) {
-            const minutes = Math.floor(seconds / 60);
-            const secs = seconds % 60;
-            return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
-        }
-    </script>
+    btn.addEventListener('click', openGift);
+    overlay.addEventListener('click', closeGift);
+    window.addEventListener('keydown', e => {
+      if (e.key === 'Escape') closeGift();
+    });
+  </script>
 
 </body>
 </html>
