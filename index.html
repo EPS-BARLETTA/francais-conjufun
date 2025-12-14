@@ -12,6 +12,7 @@
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
       background: radial-gradient(circle at top, #1f6f43, #06130b 60%, #000);
       color: #fff;
+      overflow: hidden;
       user-select: none;
     }
 
@@ -49,11 +50,9 @@
       box-shadow: 0 14px 35px rgba(255, 120, 0, .35);
     }
 
-    button:active {
-      transform: scale(0.97);
-    }
+    button:active { transform: scale(0.97); }
 
-    /* SURPRISE */
+    /* OVERLAY PLEIN ÉCRAN */
     .overlay {
       position: fixed;
       inset: 0;
@@ -64,13 +63,14 @@
       pointer-events: none;
       transition: opacity .2s ease;
     }
-
     .overlay.show {
       opacity: 1;
       pointer-events: auto;
     }
 
     .finger {
+      position: relative;
+      z-index: 2;
       font-size: min(65vh, 65vw);
       line-height: 1;
       animation: pop .2s ease-out, shake 1.2s ease-in-out infinite .2s;
@@ -80,7 +80,6 @@
       from { transform: scale(.8); }
       to   { transform: scale(1); }
     }
-
     @keyframes shake {
       0%, 100% { transform: rotate(-2deg); }
       50% { transform: rotate(2deg); }
@@ -91,6 +90,15 @@
       bottom: 16px;
       font-size: 13px;
       opacity: .7;
+      z-index: 3;
+    }
+
+    /* NEIGE */
+    canvas {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 1; /* devant le fond, derrière le doigt */
     }
   </style>
 </head>
@@ -104,15 +112,60 @@
     </div>
   </section>
 
-  <!-- SURPRISE -->
+  <!-- OVERLAY -->
   <div id="overlay" class="overlay">
+    <canvas id="snow"></canvas>
     <div class="finger">🖕</div>
-    <div class="hint">Clique ou appuie sur Échap pour fermer</div>
+    <div class="hint">Clique ou Échap pour fermer</div>
   </div>
 
   <script>
     const btn = document.getElementById('open');
     const overlay = document.getElementById('overlay');
+    const canvas = document.getElementById('snow');
+    const ctx = canvas.getContext('2d');
+
+    let flakes = [];
+    let running = false;
+
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+
+    function createFlakes(count = 160) {
+      flakes = Array.from({ length: count }, () => ({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        r: Math.random() * 2 + 1,
+        s: Math.random() * 1 + 0.5,
+        w: Math.random() * 0.5 - 0.25
+      }));
+    }
+
+    function drawSnow() {
+      if (!running) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      ctx.beginPath();
+      for (const f of flakes) {
+        ctx.moveTo(f.x, f.y);
+        ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+      }
+      ctx.fill();
+
+      for (const f of flakes) {
+        f.y += f.s;
+        f.x += f.w;
+        if (f.y > canvas.height) {
+          f.y = -5;
+          f.x = Math.random() * canvas.width;
+        }
+        if (f.x > canvas.width) f.x = 0;
+        if (f.x < 0) f.x = canvas.width;
+      }
+      requestAnimationFrame(drawSnow);
+    }
 
     async function openGift() {
       try {
@@ -121,10 +174,15 @@
         }
       } catch(e) {}
       overlay.classList.add('show');
+      resize();
+      createFlakes();
+      running = true;
+      drawSnow();
     }
 
     function closeGift() {
       overlay.classList.remove('show');
+      running = false;
       if (document.fullscreenElement) {
         document.exitFullscreen().catch(() => {});
       }
@@ -135,7 +193,9 @@
     window.addEventListener('keydown', e => {
       if (e.key === 'Escape') closeGift();
     });
+    window.addEventListener('resize', resize);
   </script>
 
 </body>
 </html>
+
