@@ -45,8 +45,17 @@
     .mode-card h3{margin:0;font-size:1.1rem;letter-spacing:.05em;}
     .mode-card p{margin:0;font-size:.9rem;opacity:.95;}
     .mode-card .tense-options{margin-top:auto;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;width:100%;}
-    .tense-option{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.7);background:rgba(255,255,255,.2);}
+    .tense-option{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.7);background:rgba(255,255,255,.2);cursor:pointer;transition:background .2s,color .2s,box-shadow .2s;}
+    .tense-option.selected{background:rgba(15,36,66,.12);border-color:rgba(63,139,255,.5);color:var(--ink);box-shadow:inset 0 0 0 1px rgba(63,139,255,.25);}
     .tense-option input{accent-color:#fff;}
+    .virtual-keyboard{margin-top:16px;padding:14px;background:#eef5ff;border-radius:20px;border:1px solid var(--border);box-shadow:inset 0 0 0 1px rgba(255,255,255,.5);display:flex;flex-direction:column;gap:10px;}
+    .virtual-keyboard .vk-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;}
+    .virtual-keyboard .vk-key{flex:0 1 auto;min-width:42px;padding:10px 12px;border-radius:12px;border:1px solid rgba(15,36,66,.15);background:#fff;font-weight:600;color:var(--ink);cursor:pointer;transition:transform .15s,box-shadow .15s;}
+    .virtual-keyboard .vk-key.control{flex:1 1 130px;}
+    .virtual-keyboard .vk-key.wide{flex:1 1 160px;}
+    .virtual-keyboard .vk-key.submit{background:linear-gradient(120deg,var(--accent),var(--accent-dark));border:none;color:#fff;box-shadow:0 18px 34px rgba(47,96,255,.35);}
+    .virtual-keyboard .vk-key:active{transform:translateY(1px);}
+    .virtual-keyboard.vk-disabled .vk-key{opacity:.4;pointer-events:none;}
     .mode-indicatif{background:linear-gradient(140deg,#1f6bff,#4794ff);}
     .mode-conditionnel{background:linear-gradient(140deg,#ff6f91,#ff9770);}
     .mode-subjonctif{background:linear-gradient(140deg,#7c4dff,#b18cff);}
@@ -173,7 +182,8 @@
           <p class="question-label" id="tense-label"></p>
           <p class="verb-infinite" id="verb-infinitive"></p>
           <p class="prompt sentence" id="prompt">Paramètre ta séance pour commencer.</p>
-          <input id="answer-input" type="text" placeholder="Tape la conjugaison" autocomplete="off" />
+          <input id="answer-input" type="text" placeholder="Tape la conjugaison" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="none" />
+          <div class="virtual-keyboard vk-disabled" id="virtual-keyboard" aria-label="Clavier virtuel ConjuFun"></div>
           <div id="error-pop" class="error-pop" role="status"></div>
           <p class="feedback" id="feedback"></p>
           <div class="rule-hint" id="rule-hint">Les conseils apparaîtront ici.</div>
@@ -387,9 +397,10 @@
     resumeModal: document.getElementById("resume-modal"),
     resumeContinue: document.getElementById("resume-continue-btn"),
     resumeReset: document.getElementById("resume-reset-btn"),
-    resumeCancel: document.getElementById("resume-cancel-btn")
+    resumeCancel: document.getElementById("resume-cancel-btn"),
+    virtualKeyboard: document.getElementById("virtual-keyboard")
   };
-  const defaultHint = "Les conseils apparaîtront ici.";
+  const defaultHint = "Fais ta réponse : l'indice apparaîtra après une première erreur.";
   const defaultSessionSummary = "Bilan à venir : termine une session pour générer le QR.";
   const praisePool = ["Bravo !", "Top score !", "Gagné !", "Continue sur cette lancée !", "C'est validé !"];
   const retryPool = ["Pas grave, retente !", "Relis la règle et poursuis.", "Tu progresses, continue.", "Essaie encore sur la suivante."];
@@ -430,6 +441,17 @@
         { id: "imperatif-present", label: "Présent", helper: "Trois personnes seulement." }
       ]
     }
+  ];
+  const keyboardLayout = [
+    ["a", "z", "e", "r", "t", "y", "u", "i", "o", "p"],
+    ["q", "s", "d", "f", "g", "h", "j", "k", "l", "m"],
+    ["w", "x", "c", "v", "b", "n", "'", "-"],
+    ["é", "è", "ê", "à", "â", "î", "ô", "ç"]
+  ];
+  const keyboardControls = [
+    { label: "Espace", value: " ", className: "control wide" },
+    { label: "Effacer", action: "backspace", className: "control" },
+    { label: "Valider", action: "submit", className: "control submit" }
   ];
   const baseDictionary = window.CONJUFUN_VERB_DICTIONARY || [];
   const questionBank = (function () {
@@ -499,7 +521,8 @@
     errorCountForQuestion: 0,
     activeQuestion: null,
     advanceAfterModalClose: false,
-    pendingStartRequest: false
+    pendingStartRequest: false,
+    hintUnlocked: false
   };
   const storageKey = "conjufun-scanprof";
   const scanProfData = loadScanProfData();
@@ -561,6 +584,7 @@
           } else {
             state.selectedTenses.delete(tense.id);
           }
+          updateTenseOptionStyles();
           updateAvailableCount();
         });
         const labelText = document.createElement("span");
@@ -572,6 +596,7 @@
       fragment.appendChild(card);
     });
     elements.modeBlocks.appendChild(fragment);
+    updateTenseOptionStyles();
     updateAvailableCount();
   }
 
@@ -584,7 +609,170 @@
         state.selectedTenses.add(checkbox.value);
       }
     });
+    updateTenseOptionStyles();
     updateAvailableCount();
+  }
+
+  function updateTenseOptionStyles() {
+    if (!elements.modeBlocks) {
+      return;
+    }
+    elements.modeBlocks.querySelectorAll(".tense-option").forEach(option => {
+      const checkbox = option.querySelector("input[type=checkbox]");
+      option.classList.toggle("selected", Boolean(checkbox && checkbox.checked));
+    });
+  }
+
+  function configureAnswerInputForVirtualKeyboard() {
+    if (!elements.answerInput) {
+      return;
+    }
+    elements.answerInput.setAttribute("inputmode", "none");
+    elements.answerInput.setAttribute("autocorrect", "off");
+    elements.answerInput.setAttribute("autocapitalize", "off");
+    elements.answerInput.setAttribute("spellcheck", "false");
+    elements.answerInput.readOnly = true;
+  }
+
+  function buildVirtualKeyboard() {
+    if (!elements.virtualKeyboard) {
+      return;
+    }
+    elements.virtualKeyboard.innerHTML = "";
+    const fragment = document.createDocumentFragment();
+    keyboardLayout.forEach(row => {
+      const rowNode = document.createElement("div");
+      rowNode.className = "vk-row";
+      row.forEach(value => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "vk-key";
+        button.dataset.value = value;
+        button.textContent = value.length === 1 ? value.toUpperCase() : value;
+        button.addEventListener("click", () => insertVirtualValue(value));
+        rowNode.appendChild(button);
+      });
+      fragment.appendChild(rowNode);
+    });
+    const controlsRow = document.createElement("div");
+    controlsRow.className = "vk-row vk-controls";
+    keyboardControls.forEach(key => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "vk-key";
+      if (key.className) {
+        key.className.split(" ").forEach(cls => {
+          if (cls.trim()) {
+            button.classList.add(cls.trim());
+          }
+        });
+      }
+      button.textContent = key.label;
+      if (key.action) {
+        button.dataset.action = key.action;
+        button.addEventListener("click", () => handleVirtualAction(key.action));
+      } else if (typeof key.value === "string") {
+        button.dataset.value = key.value;
+        button.addEventListener("click", () => insertVirtualValue(key.value));
+      }
+      controlsRow.appendChild(button);
+    });
+    fragment.appendChild(controlsRow);
+    elements.virtualKeyboard.appendChild(fragment);
+    updateVirtualKeyboardState();
+  }
+
+  function focusAnswerInput() {
+    if (!elements.answerInput || typeof elements.answerInput.focus !== "function") {
+      return;
+    }
+    elements.answerInput.focus({ preventScroll: true });
+  }
+
+  function getAnswerSelectionPositions() {
+    const input = elements.answerInput;
+    if (!input) {
+      return { start: 0, end: 0 };
+    }
+    let { selectionStart, selectionEnd } = input;
+    if (typeof selectionStart !== "number" || typeof selectionEnd !== "number") {
+      selectionStart = selectionEnd = input.value.length;
+    }
+    return { start: selectionStart, end: selectionEnd };
+  }
+
+  function setCaretPosition(position) {
+    if (!elements.answerInput) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      try {
+        elements.answerInput.setSelectionRange(position, position);
+      } catch {
+        // No-op: certain browsers may block selection updates on unfocused inputs.
+      }
+    });
+  }
+
+  function insertVirtualValue(value) {
+    if (!elements.answerInput || elements.answerInput.disabled) {
+      return;
+    }
+    focusAnswerInput();
+    const { start, end } = getAnswerSelectionPositions();
+    const currentValue = elements.answerInput.value;
+    elements.answerInput.value = currentValue.slice(0, start) + value + currentValue.slice(end);
+    const nextCaret = start + value.length;
+    setCaretPosition(nextCaret);
+  }
+
+  function removeVirtualCharacter() {
+    if (!elements.answerInput || elements.answerInput.disabled) {
+      return;
+    }
+    focusAnswerInput();
+    const { start, end } = getAnswerSelectionPositions();
+    if (start === 0 && end === 0) {
+      return;
+    }
+    const currentValue = elements.answerInput.value;
+    if (start !== end) {
+      elements.answerInput.value = currentValue.slice(0, start) + currentValue.slice(end);
+      setCaretPosition(start);
+      return;
+    }
+    const nextCaret = Math.max(0, start - 1);
+    elements.answerInput.value = currentValue.slice(0, nextCaret) + currentValue.slice(end);
+    setCaretPosition(nextCaret);
+  }
+
+  function handleVirtualAction(action) {
+    if (action === "backspace") {
+      removeVirtualCharacter();
+      return;
+    }
+    if (action === "submit") {
+      if (elements.checkBtn && !elements.checkBtn.disabled) {
+        handleCheck();
+      }
+    }
+  }
+
+  function updateVirtualKeyboardState() {
+    if (!elements.virtualKeyboard || !elements.answerInput || !elements.checkBtn) {
+      return;
+    }
+    const inputDisabled = elements.answerInput.disabled;
+    const submitDisabled = elements.checkBtn.disabled;
+    elements.virtualKeyboard.classList.toggle("vk-disabled", inputDisabled);
+    elements.virtualKeyboard.querySelectorAll("button").forEach(button => {
+      const action = button.dataset.action;
+      if (action === "submit") {
+        button.disabled = submitDisabled;
+      } else {
+        button.disabled = inputDisabled;
+      }
+    });
   }
 
   function updateAvailableCount() {
@@ -705,6 +893,7 @@
     state.awaitingNext = false;
     state.errorCountForQuestion = 0;
     state.advanceAfterModalClose = false;
+    state.hintUnlocked = false;
     elements.tenseLabel.textContent = `${question.modeLabel} • ${question.tenseLabel}`;
     elements.verbInfinitive.textContent = question.infinitive;
     elements.prompt.textContent = question.prompt;
@@ -713,9 +902,10 @@
     elements.checkBtn.disabled = false;
     elements.feedback.textContent = "";
     elements.feedback.className = "feedback";
-    elements.ruleHint.textContent = `Astuce : ${question.rule}`;
+    elements.ruleHint.textContent = defaultHint;
     clearError();
-    elements.answerInput.focus();
+    focusAnswerInput();
+    updateVirtualKeyboardState();
     updateScoreboard();
   }
 
@@ -740,6 +930,7 @@
     }
     state.errorCountForQuestion += 1;
     if (state.errorCountForQuestion === 1) {
+      revealHintForActiveQuestion();
       elements.feedback.textContent = `Oups ! ${randomItem(retryPool)}`;
       elements.feedback.className = "feedback error";
       showError("Relis la règle et retente ta réponse.");
@@ -760,6 +951,7 @@
     state.awaitingNext = true;
     elements.answerInput.disabled = true;
     elements.checkBtn.disabled = true;
+    updateVirtualKeyboardState();
     const historyEntry = {
       prompt: state.activeQuestion.prompt,
       expected: state.activeQuestion.answer,
@@ -808,6 +1000,8 @@
     elements.answerInput.value = "";
     elements.answerInput.disabled = true;
     elements.checkBtn.disabled = true;
+    state.hintUnlocked = false;
+    updateVirtualKeyboardState();
     const total = state.questions.length;
     const accuracy = total ? Math.round((state.correctAnswers / total) * 100) : 0;
     elements.prompt.textContent = "Session terminée 🎉";
@@ -828,6 +1022,7 @@
     state.activeQuestion = null;
     state.sessionMeta = null;
     state.advanceAfterModalClose = false;
+    state.hintUnlocked = false;
     state.correctAnswers = 0;
     state.totalAnswered = 0;
     elements.prompt.textContent = "Paramètre ta séance pour commencer.";
@@ -835,6 +1030,7 @@
     elements.answerInput.value = "";
     elements.answerInput.disabled = true;
     elements.checkBtn.disabled = true;
+    updateVirtualKeyboardState();
     elements.feedback.textContent = "";
     elements.feedback.className = "feedback";
     elements.ruleHint.textContent = defaultHint;
@@ -901,6 +1097,14 @@
   function clearError() {
     elements.errorPop.textContent = "";
     elements.errorPop.classList.remove("visible");
+  }
+
+  function revealHintForActiveQuestion() {
+    if (!state.activeQuestion || state.hintUnlocked) {
+      return;
+    }
+    state.hintUnlocked = true;
+    elements.ruleHint.textContent = `Astuce : ${state.activeQuestion.rule}`;
   }
 
   function openConjugationModal(question, options = {}) {
@@ -1268,8 +1472,10 @@
     elements.qrDownload.addEventListener("click", () => downloadQrImage(lastQrCanvas));
   }
 
+  configureAnswerInputForVirtualKeyboard();
   resetExerciseView();
   buildModeCards();
+  buildVirtualKeyboard();
   toggleModeSelection(false);
 })();
 </script>
